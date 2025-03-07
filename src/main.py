@@ -7,24 +7,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = os.getenv("EDITOR_CHANNEL_ID")
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-global line_counter 
-global stack_trace
-global input_mode 
-global line_symbol
+global input_mode
 global code
 
 input_mode = 0  # 0:コマンド入力モード, 1:メッセージ入力モード
-line_symbol = "=================================================================================================================="
-code=[]
+line_symbol = "========================================================"
+code = []
+
 
 @bot.event
 async def on_ready():
-    line_counter = 0
-    stack_trace = "#"
     input_mode = 0
     code = []
     print(f"Logged in as {bot.user}")
@@ -35,7 +32,7 @@ async def on_ready():
         print(f"Sync error: {e}")
 
 
-async def all_messages_delete(channel_ID):
+async def all_messages_delete(channel_ID=CHANNEL_ID):
     try:
         channel = await bot.fetch_channel(channel_ID)
         messages = []
@@ -47,27 +44,19 @@ async def all_messages_delete(channel_ID):
 
     except Exception as e:
         print(f"Error deleting messages: {e}")
-        
-
-async def show_editor(code,line_counter:int,stack_trace="#"):
-    await bot.send_message(line_symbol)
-    for line in code:
-        await bot.send_message(f"{line_counter} | {line}")
-    await bot.send_message(line_symbol)
-    show_terminal(stack_trace)
-
-async def show_terminal(stack_trace:str):
-    await bot.send_message(f"```\nterminal\n|\n{stack_trace}\n```")
 
 
-@bot.tree.command(name="edit", description="Edit a message")
-async def edit(interaction: discord.Interaction):
-    stack_trace = "#"
-    line_counter = 0
-    await all_messages_delete(1347111148335665213)
-    await interaction.response.send_message(
-        f"|\n{line_symbol}\n{line_counter} | \n{line_symbol}\n```\nterminal\n|\n{stack_trace}\n```"
-    )
+async def show_editor(message, code, stack_trace="#"):
+    await all_messages_delete()
+    await message.channel.send(line_symbol)
+    for i, line in enumerate(code):
+        await message.channel.send(f"{i} | {line}")
+    await message.channel.send(line_symbol)
+    await show_terminal(message, stack_trace)
+
+
+async def show_terminal(message, stack_trace: str):
+    await message.channel.send(f"```\nterminal\n|\n{stack_trace}\n```")
 
 
 @bot.event
@@ -75,14 +64,26 @@ async def on_message(message):
     if message.author == bot.user:
         return
     try:
+        if message.content=="new":
+            await show_editor(message, [], "all deleted")
+            return
         # 入力モード切り替え
-        if input_mode ==0:
+        code = [
+            "import discord",
+            "from discord.ext import commands",
+            "import os",
+            "from dotenv import load_dotenv",
+            "load_dotenv()",
+            "TOKEN = os.getenv",
+        ]
+        if input_mode == 0:
             # コマンド入力モード
+            await show_editor(message, code, "mode: command input")
             pass
         else:
             # メッセージ入力モード
-            await message.channel.send("メッセージ入力モード")
-            return
+            await show_editor(message, code, "mode: message input")
+            pass
         # print("on_message")
         # tmp_message = message.content
         # await message.channel.send(tmp_message)
