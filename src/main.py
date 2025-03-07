@@ -12,16 +12,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-global input_mode
-global code
 
 input_mode = 0  # 0:コマンド入力モード, 1:メッセージ入力モード
 line_symbol = "========================================================"
 code = []
-
+terminal_message_id = 0
 
 @bot.event
 async def on_ready():
+    global code, input_mode
     input_mode = 0
     code = []
     print(f"Logged in as {bot.user}")
@@ -56,8 +55,16 @@ async def show_editor(message, code, stack_trace="#"):
 
 
 async def show_terminal(message, stack_trace: str):
-    await message.channel.send(f"```\nterminal\n|\n{stack_trace}\n```")
+    global terminal_message_id
+    terminal_message=await message.channel.send(f"```\nterminal\n|\n{stack_trace}\n```")
+    terminal_message_id = terminal_message.id
 
+
+async def renew_terminal(message, stack_trace: str):
+    
+    new_message = await message.channel.fetch_message(terminal_message_id)
+    print(new_message)
+    await new_message.edit(content=f"```\nterminal\n|\n{stack_trace}\n```")
 
 @bot.event
 async def on_message(message):
@@ -78,11 +85,11 @@ async def on_message(message):
         ]
         if input_mode == 0:
             # コマンド入力モード
-            await show_editor(message, code, "mode: command input")
+            await renew_terminal(message, "mode: command input")
             pass
         else:
             # メッセージ入力モード
-            await show_editor(message, code, "mode: message input")
+            await renew_terminal(message, "mode: message input")
             pass
         # print("on_message")
         # tmp_message = message.content
