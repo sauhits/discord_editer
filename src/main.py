@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import re
 from dotenv import load_dotenv
 
 
@@ -31,6 +32,7 @@ async def on_ready():
 
 
 async def all_messages_delete(channel_ID=CHANNEL_ID):
+    """指定されたチャンネルのメッセージを全て削除する"""
     try:
         channel = await bot.fetch_channel(channel_ID)
         messages = []
@@ -45,6 +47,7 @@ async def all_messages_delete(channel_ID=CHANNEL_ID):
 
 
 async def show_editor(message, code, stack_trace="#"):
+    """code配列の内容を全更新して表示する"""
     await all_messages_delete()
     await message.channel.send(line_symbol)
     for i, line in enumerate(code):
@@ -54,25 +57,41 @@ async def show_editor(message, code, stack_trace="#"):
 
 
 async def show_terminal(message, stack_trace: str):
+    """terminalメッセージを表示する"""
     global terminal_message_id
+    if bool(re.match(r"^```\nterminal\n|\n", stack_trace)):
+        terminal_message=await message.channel.send(stack_trace)
+        terminal_message_id = terminal_message.id
+        return
     terminal_message=await message.channel.send(f"```\nterminal\n|\n{stack_trace}\n```")
     terminal_message_id = terminal_message.id
 
 
 async def renew_terminal(message, stack_trace: str):
-    
+    """terminalメッセージを更新する"""
     new_message = await message.channel.fetch_message(terminal_message_id)
-    await new_message.edit(content=f"```\nterminal\n|\n{stack_trace}\n```")
+    if input_mode == 0:
+        mode_str = "mode: command input"
+    else:
+        mode_str = "mode: message input"
+    await new_message.edit(content=f"```\nterminal\n|\n{mode_str}\n{stack_trace}\n```")
+
 
 async def get_message_count(channel_id=CHANNEL_ID):
+    """指定されたチャンネルのメッセージ数を取得する"""
+    global message_count
     channel = await bot.fetch_channel(channel_id)
     count=0
     async for _ in channel.history(limit=None):
         count+=1
+    message_count=count-4
     return count
 
-async def add_line(add_message,channel_id=CHANNEL_ID):
-    global message_count
+
+async def add_line(mother_message,channel_id=CHANNEL_ID):
+    """指定されたチャンネルにメッセージを追加する"""
+    child_message_content=mother_message.content
+    global message_count,terminal_message_id
     channel = await bot.fetch_channel(channel_id)
     messages = []
     async for message in channel.history(limit=3):
@@ -80,14 +99,12 @@ async def add_line(add_message,channel_id=CHANNEL_ID):
     if messages:
         for message in messages:
             await message.delete()
-    lines=add_message.split("\n")
+    lines=child_message_content.split("\n")
     for line in lines:
         message_count+=1
         await message.channel.send(f"{message_count} | {line}")
     await message.channel.send(line_symbol)
-    rewrite_terminal=messages[1]
-    await message.channel.send(rewrite_terminal.content)
-    
+    await show_terminal(mother_message, "mode: message input\nadd message")
 
 @bot.event
 async def on_message(message):
@@ -97,7 +114,7 @@ async def on_message(message):
     try:
         if message.content=="new":
             message_count=0
-            await show_editor(message, [], "mode: command input\nall clear")
+            await show_editor(message, [], "all clear")
             return
         # 入力モード切り替え
         code = [
@@ -112,23 +129,32 @@ async def on_message(message):
             # コマンド入力モード
             if message.content==":i": #メッセージ入力モードに切り替え
                 input_mode = 1
+                await get_message_count()
                 await message.delete()
-                await renew_terminal(message, "mode: message input")
+                await renew_terminal(message, "")
+            elif message.content.isdigit():
+                if int(message.content) <= message_count:
+                    await message.delete()
+                    await renew_terminal(message,f"rewrite line:{message.content}")
+                else:
+                    await message.delete()
+                    await renew_terminal(message,"❌ 行数が存在しません！")
+                
         else:
             # メッセージ入力モード
             if message.content==":e": #コマンド入力モードに切り替え
                 input_mode = 0
+                await get_message_count()
                 await message.delete()
-                await renew_terminal(message, "mode: command input")
+                await renew_terminal(message, "")
             else:
-                await add_line(message.content)
-        # print("on_message")
-        # tmp_message = message.content
-        # await message.channel.send(tmp_message)
+                await add_line(message)
+                
     except discord.Forbidden:
         await message.channel.send("❌ メッセージ削除権限がありません！")
     except discord.HTTPException as e:
         await message.channel.send(f"❌ エラーが発生しました: {e}")
+        print(f"Error: {e}")
 
 
 bot.run(TOKEN)
